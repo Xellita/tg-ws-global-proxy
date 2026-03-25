@@ -30,7 +30,7 @@ IPV6_WARN_MARKER = APP_DIR / ".ipv6_warned"
 
 DEFAULT_CONFIG = {
     "port": 1080,
-    "host": "127.0.0.1",
+    "host": "0.0.0.0",
     "dc_ip": ["2:149.154.167.220", "4:149.154.167.220"],
     "verbose": False,
     "log_max_mb": 5,
@@ -227,7 +227,7 @@ def _load_icon():
 
 
 def _run_proxy_thread(
-    port: int, dc_opt: Dict[int, str], verbose: bool, host: str = "127.0.0.1"
+    port: int, dc_opt: Dict[int, str], verbose: bool, host: str = "0.0.0.0"
 ):
     global _async_stop
     loop = _asyncio.new_event_loop()
@@ -326,7 +326,7 @@ def _show_info(text: str, title: str = "TG WS Proxy"):
 
 def _on_open_in_telegram(icon=None, item=None):
     port = _config.get("port", DEFAULT_CONFIG["port"])
-    url = f"tg://socks?server=127.0.0.1&port={port}"
+    url = f"tg://socks?server=0.0.0.0&port={port}"
     log.info("Copying %s", url)
 
     try:
@@ -396,7 +396,7 @@ def _edit_config_dialog():
         text_color=TEXT_PRIMARY,
         anchor="w",
     ).pack(anchor="w", pady=(0, 4))
-    host_var = ctk.StringVar(value=cfg.get("host", "127.0.0.1"))
+    host_var = ctk.StringVar(value=cfg.get("host", "0.0.0.0"))
     host_entry = ctk.CTkEntry(
         frame,
         textvariable=host_var,

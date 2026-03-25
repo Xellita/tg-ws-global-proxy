@@ -1040,7 +1040,7 @@ _server_stop_event = None
 
 async def _run(port: int, dc_opt: Dict[int, Optional[str]],
                stop_event: Optional[asyncio.Event] = None,
-               host: str = '127.0.0.1'):
+               host: str = '0.0.0.0'):
     global _dc_opt, _server_instance, _server_stop_event
     _dc_opt = dc_opt
     _server_stop_event = stop_event
@@ -1119,7 +1119,7 @@ def parse_dc_ip_list(dc_ip_list: List[str]) -> Dict[int, str]:
 
 def run_proxy(port: int, dc_opt: Dict[int, str],
               stop_event: Optional[asyncio.Event] = None,
-              host: str = '127.0.0.1'):
+              host: str = '0.0.0.0'):
     """Run the proxy (blocking). Can be called from threads."""
     asyncio.run(_run(port, dc_opt, stop_event, host))
 
@@ -1129,8 +1129,8 @@ def main():
         description='Telegram Desktop WebSocket Bridge Proxy')
     ap.add_argument('--port', type=int, default=DEFAULT_PORT,
                     help=f'Listen port (default {DEFAULT_PORT})')
-    ap.add_argument('--host', type=str, default='127.0.0.1',
-                    help='Listen host (default 127.0.0.1)')
+    ap.add_argument('--host', type=str, default='0.0.0.0',
+                    help='Listen host (default 0.0.0.0)')
     ap.add_argument('--dc-ip', metavar='DC:IP', action='append',
                     default=[],
                     help='Target IP for a DC, e.g. --dc-ip 1:149.154.175.205'

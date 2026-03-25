@@ -41,7 +41,7 @@ MENUBAR_ICON_PATH = APP_DIR / "menubar_icon.png"
 
 DEFAULT_CONFIG = {
     "port": 1080,
-    "host": "127.0.0.1",
+    "host": "0.0.0.0",
     "dc_ip": ["2:149.154.167.220", "4:149.154.167.220"],
     "verbose": False,
     "log_max_mb": 5,
@@ -278,7 +278,7 @@ def _ask_yes_no_close(text: str,
 # Proxy lifecycle
 
 def _run_proxy_thread(port: int, dc_opt: Dict[int, str], verbose: bool,
-                      host: str = '127.0.0.1'):
+                      host: str = '0.0.0.0'):
     global _async_stop
     loop = _asyncio.new_event_loop()
     _asyncio.set_event_loop(loop)
@@ -357,7 +357,7 @@ def restart_proxy():
 
 def _on_open_in_telegram(_=None):
     port = _config.get("port", DEFAULT_CONFIG["port"])
-    url = f"tg://socks?server=127.0.0.1&port={port}"
+    url = f"tg://socks?server=0.0.0.0&port={port}"
     log.info("Opening %s", url)
     try:
         result = subprocess.call(['open', url])
