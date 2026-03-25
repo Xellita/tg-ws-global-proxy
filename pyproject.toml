@@ -13,7 +13,7 @@ requires-python = ">=3.8"
 license = { name = "MIT", file = "LICENSE" }
 
 authors = [
-    { name = "Flowseal" }
+    { name = "Flowseal, Xellita" }
 ]
 
 keywords = [
@@ -59,6 +59,7 @@ tg-ws-proxy-tray-linux = "linux:main"
 
 [project.urls]
 Source = "https://github.com/Flowseal/tg-ws-proxy"
+Fork = "https://github.com/Xellita/tg-ws-global-proxy"
 Issues = "https://github.com/Flowseal/tg-ws-proxy/issues"
 
 [tool.hatch.build.targets.wheel]

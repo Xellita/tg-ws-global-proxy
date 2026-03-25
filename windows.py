@@ -25,7 +25,7 @@ import proxy.tg_ws_proxy as tg_ws_proxy
 
 IS_FROZEN = bool(getattr(sys, "frozen", False))
 
-APP_NAME = "TgWsProxy"
+APP_NAME = "TgWsGlobalProxy"
 APP_DIR = Path(os.environ.get("APPDATA", Path.home())) / APP_NAME
 CONFIG_FILE = APP_DIR / "config.json"
 LOG_FILE = APP_DIR / "proxy.log"
@@ -35,7 +35,7 @@ IPV6_WARN_MARKER = APP_DIR / ".ipv6_warned"
 
 DEFAULT_CONFIG = {
     "port": 1080,
-    "host": "0.0.0.0",
+    "host_mode": "global",
     "dc_ip": ["2:149.154.167.220", "4:149.154.167.220"],
     "verbose": False,
     "autostart": False,
@@ -54,6 +54,65 @@ _lock_file_path: Optional[Path] = None
 
 log = logging.getLogger("tg-ws-tray")
 
+# Получение локального ip вида 192.198.x.x
+def get_local_ip():
+    interfaces = psutil.net_if_addrs()
+    
+    # Проводные адаптеры (в порядке приоритета)
+    wired_names = [
+        'ethernet', 'eth', 'enp', 'enx',  # Linux
+        'en0',  # macOS (часто Ethernet)
+        'lan', 'gigabit', 'realtek', 'intel',  # Общие названия
+        'pci'  # PCI Ethernet
+    ]
+    
+    # Беспроводные адаптеры
+    wireless_names = [
+        'wlan', 'wlp', 'wlx',  # Linux
+        'en1',  # macOS (часто Wi-Fi)
+        'wi-fi', 'wifi', 'wireless', '802.11',
+        'qualcomm', 'broadcom', 'intel wireless'
+    ]
+    
+    # Игнорируемые интерфейсы
+    ignored_names = [
+        'virtual', 'vmnet', 'vboxnet', 'vEthernet',
+        'bluetooth', 'loopback', 'microsoft wi-fi direct',
+        'docker', 'bridge', 'tap', 'tun'
+    ]
+    
+    def ignore(name):
+        name_lower = name.lower()
+        return any(ignored in name_lower for ignored in ignored_names)
+    
+    def check_interface(name, addresses):
+        if ignore(name):
+            return None
+        for address in addresses:
+            if address.family == 2 and address.address.startswith("192.168."):
+                return address.address
+        return None
+    
+    for interface_name, interface_addresses in interfaces.items():
+        name_lower = interface_name.lower()
+        if any(wired in name_lower for wired in wired_names):
+            result = check_interface(interface_name, interface_addresses)
+            if result:
+                return result
+    
+    for interface_name, interface_addresses in interfaces.items():
+        name_lower = interface_name.lower()
+        if any(wireless in name_lower for wireless in wireless_names):
+            result = check_interface(interface_name, interface_addresses)
+            if result:
+                return result
+    
+    for interface_name, interface_addresses in interfaces.items():
+        result = check_interface(interface_name, interface_addresses)
+        if result:
+            return result
+    
+    return "0.0.0.0"
 
 def _same_process(lock_meta: dict, proc: psutil.Process) -> bool:
     try:
@@ -271,7 +330,7 @@ def _load_icon():
 
 
 def _run_proxy_thread(port: int, dc_opt: Dict[int, str], verbose: bool,
-                      host: str = '0.0.0.0'):
+                      host: str = '127.0.0.1'):
     global _async_stop
     loop = _asyncio.new_event_loop()
     _asyncio.set_event_loop(loop)
@@ -297,8 +356,9 @@ def start_proxy():
         return
 
     cfg = _config
+    local_ip = get_local_ip()
+    host = "0.0.0.0" if cfg.get("host_mode") == "global" else "127.0.0.1"
     port = cfg.get("port", DEFAULT_CONFIG["port"])
-    host = cfg.get("host", DEFAULT_CONFIG["host"])
     dc_ip_list = cfg.get("dc_ip", DEFAULT_CONFIG["dc_ip"])
     verbose = cfg.get("verbose", False)
 
@@ -309,7 +369,10 @@ def start_proxy():
         _show_error(f"Ошибка конфигурации:\n{e}")
         return
 
-    log.info("Starting proxy on %s:%d ...", host, port)
+    if cfg.get("host_mode") == "global":
+        log.info("Starting proxy on %s:%d ...", local_ip, port)
+    else:
+        log.info("Starting proxy on 127.0.0.1:%s ...", port)
 
     buf_kb = cfg.get("buf_kb", DEFAULT_CONFIG["buf_kb"])
     pool_size = cfg.get("pool_size", DEFAULT_CONFIG["pool_size"])
@@ -351,8 +414,9 @@ def _show_info(text: str, title: str = "TG WS Proxy"):
 
 
 def _on_open_in_telegram(icon=None, item=None):
+    local_ip = get_local_ip()
     port = _config.get("port", DEFAULT_CONFIG["port"])
-    url = f"tg://socks?server=0.0.0.0&port={port}"
+    url = f"tg://socks?server={local_ip}&port={port}"
     log.info("Opening %s", url)
     try:
         result = webbrowser.open(url)
@@ -424,16 +488,15 @@ def _edit_config_dialog():
     frame = ctk.CTkFrame(root, fg_color=BG, corner_radius=0)
     frame.pack(fill="both", expand=True, padx=24, pady=20)
 
-    # Host
-    ctk.CTkLabel(frame, text="IP-адрес прокси",
-                 font=(FONT_FAMILY, 13), text_color=TEXT_PRIMARY,
-                 anchor="w").pack(anchor="w", pady=(0, 4))
-    host_var = ctk.StringVar(value=cfg.get("host", "0.0.0.0"))
-    host_entry = ctk.CTkEntry(frame, textvariable=host_var, width=200, height=36,
-                              font=(FONT_FAMILY, 13), corner_radius=10,
-                              fg_color=FIELD_BG, border_color=FIELD_BORDER,
-                              border_width=1, text_color=TEXT_PRIMARY)
-    host_entry.pack(anchor="w", pady=(0, 12))
+    # HostMode
+    host_mode_bool = True if cfg.get("host_mode") == "global" else False
+    host_mode_var = ctk.BooleanVar(value=host_mode_bool)
+    ctk.CTkCheckBox(frame, text="Раздавать в сеть (0.0.0.0 режим)",
+                    variable=host_mode_var, font=(FONT_FAMILY, 13),
+                    text_color=TEXT_PRIMARY,
+                    fg_color=TG_BLUE, hover_color=TG_BLUE_HOVER,
+                    corner_radius=6, border_width=2,
+                    border_color=FIELD_BORDER).pack(anchor="w", pady=(0, 8))
 
     # Port
     ctk.CTkLabel(frame, text="Порт прокси",
@@ -504,14 +567,6 @@ def _edit_config_dialog():
                  anchor="w", justify="left").pack(anchor="w", pady=(0, 8))
 
     def on_save():
-        import socket as _sock
-        host_val = host_var.get().strip()
-        try:
-            _sock.inet_aton(host_val)
-        except OSError:
-            _show_error("Некорректный IP-адрес.")
-            return
-
         try:
             port_val = int(port_var.get().strip())
             if not (1 <= port_val <= 65535):
@@ -529,7 +584,7 @@ def _edit_config_dialog():
             return
 
         new_cfg = {
-            "host": host_val,
+            "host_mode": "global" if host_mode_var.get() == True else "local",
             "port": port_val,
             "dc_ip": lines,
             "verbose": verbose_var.get(),
@@ -616,9 +671,9 @@ def _show_first_run():
     if FIRST_RUN_MARKER.exists():
         return
 
-    host = _config.get("host", DEFAULT_CONFIG["host"])
+    local_ip = get_local_ip()
     port = _config.get("port", DEFAULT_CONFIG["port"])
-    tg_url = f"tg://socks?server={host}&port={port}"
+    tg_url = f"tg://socks?server={local_ip}&port={port}"
 
     if ctk is None:
         FIRST_RUN_MARKER.touch()
@@ -672,7 +727,7 @@ def _show_first_run():
         (f"  Или ссылка: {tg_url}", False),
         ("\n  Вручную:", True),
         ("  Настройки → Продвинутые → Тип подключения → Прокси", False),
-        (f"  SOCKS5 → {host} : {port} (без логина/пароля)", False),
+        (f"  SOCKS5 → {local_ip} : {port} (без логина/пароля)", False),
     ]
 
     for text, bold in sections:
@@ -763,11 +818,11 @@ def _show_ipv6_dialog():
 def _build_menu():
     if pystray is None:
         return None
-    host = _config.get("host", DEFAULT_CONFIG["host"])
+    local_ip = get_local_ip()
     port = _config.get("port", DEFAULT_CONFIG["port"])
     return pystray.Menu(
         pystray.MenuItem(
-            f"Открыть в Telegram ({host}:{port})",
+            f"Открыть в Telegram ({local_ip}:{port})",
             _on_open_in_telegram,
             default=True),
         pystray.Menu.SEPARATOR,
